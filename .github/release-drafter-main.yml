@@ -1,5 +1,11 @@
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
+
+# --- THIS IS THE FIX ---
+# Add a filter to ONLY find stable tags (e.g., v1.2.3)
+# This will ignore all pre-release tags (e.g., v1.2.3-dev.SHA)
+tag-filter: 'v[0-9]*.[0-9]*.[0-9]*'
+
 version-resolver:
   major:
     labels:
