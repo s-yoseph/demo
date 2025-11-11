@@ -1,0 +1,103 @@
+name: Release Drafting and Publishing (PR/Push)
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened, edited, closed] # Added 'closed' for publishing
+    branches:
+      - develop
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # ----------------------------------------------------------------------
+  # 1. DRAFTING JOB (Triggers on Pull Request events only: opened, sync, edited)
+  # This job continuously updates the draft release with new changes.
+  # ----------------------------------------------------------------------
+  draft:
+    # Only run on standard PR events, NOT when closed
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # --- CHANGE: Checkout the HEAD branch of the PR for stable commit history access ---
+          ref: ${{ github.event.pull_request.head.ref }}
+      
+      - name: Determine Config Name
+        id: config_path
+        run: |
+          if [ "${{ github.base_ref }}" == "develop" ]; then
+            echo "config_name=release-drafter-develop.yml" >> $GITHUB_OUTPUT
+          else
+            echo "config_name=release-drafter-main.yml" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Draft Release
+        uses: release-drafter/release-drafter@v6
+        with:
+          config-name: ${{ steps.config_path.outputs.config_name }}
+          # --- ADDED: Explicitly tell Release Drafter the target merge commit ---
+          # This helps the action reliably build the changelog.
+          target-commitish: ${{ github.event.pull_request.merge_commit_sha }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  
+  # ----------------------------------------------------------------------
+  # 2. PUBLISHING JOB (Triggers only when a PR with 'Publish' label is MERGED)
+  # This replaces the old auto-publish jobs.
+  # ----------------------------------------------------------------------
+  publish-on-label:
+    # Run only if the PR was merged AND it has the 'Publish' label.
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'Publish')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # Checkout the merge commit to ensure Release Drafter uses the final SHA for tagging
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Determine Config and Prerelease Status
+        id: config_path
+        run: |
+          # Use the base branch (where the PR merged into) to decide config and prerelease status
+          BASE_REF=${{ github.event.pull_request.base.ref }}
+          if [ "$BASE_REF" == "develop" ]; then
+            echo "config_name=release-drafter-develop.yml" >> $GITHUB_OUTPUT
+            echo "prerelease_status=true" >> $GITHUB_OUTPUT
+          else
+            echo "config_name=release-drafter-main.yml" >> $GITHUB_OUTPUT
+            echo "prerelease_status=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create/Update Final Draft (using merge commit)
+        # This re-runs Release Drafter on the merge commit to get the final version and tag.
+        # It creates a new draft or updates the existing draft for that tag.
+        id: create_draft
+        uses: release-drafter/release-drafter@v6
+        with:
+          config-name: ${{ steps.config_path.outputs.config_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Publish Release using Draft ID
+        # Uses the GitHub CLI to publish the release generated in the previous step
+        if: steps.create_draft.outputs.id
+        run: |
+          echo "Publishing release ${{ steps.create_draft.outputs.name }} (ID: ${{ steps.create_draft.outputs.id }})"
+          # Use gh CLI to update the draft, setting draft=false and setting prerelease status
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/releases/${{ steps.create_draft.outputs.id }} \
+            -f draft=false \
+            -f prerelease=${{ steps.config_path.outputs.prerelease_status }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

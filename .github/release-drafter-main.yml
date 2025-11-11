@@ -1,0 +1,27 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+version-resolver:
+  major:
+    labels:
+      - 'Major'
+  minor:
+    labels:
+      - 'enhancement'
+  patch:
+    labels:
+      - 'bug'
+  default: patch
+categories:
+  - title: "🚀 Enhancements"
+    labels:
+      - enhancement
+  - title: "🐛 Bug Fixes"
+    labels:
+      - bug
+exclude-labels:
+  - skip-release
+change-template: "- $TITLE (#$NUMBER)"
+no-changes-template: "- No changes"
+template: |
+  ## Changes
+  $CHANGES
