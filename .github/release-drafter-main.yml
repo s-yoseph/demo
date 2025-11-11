@@ -1,9 +1,9 @@
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
 
-# --- FIXED: Escaped the dots (\.) and enforced at least one digit (+) ---
-# This filter now STRICTLY matches stable vX.Y.Z tags and ignores anything with -dev
-tag-filter: 'v\d+\.\d+\.\d+'
+# --- FIX: Use tag-ignore to exclude all pre-releases. ---
+# This ensures main only sees stable vX.Y.Z tags.
+tag-ignore: 'v*-dev.*'
 
 version-resolver:
   major:
