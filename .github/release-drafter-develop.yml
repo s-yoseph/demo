@@ -1,26 +1,28 @@
 name-template: 'v$RESOLVED_VERSION-dev'
+# --- THIS IS THE FIX ---
+# Add .$COMMIT_SHA to make every dev tag unique
 tag-template: 'v$RESOLVED_VERSION-dev.$COMMIT_SHA'
-# --- ADDED: Filter tags so develop only considers pre-release tags for its version base ---
+
+# This filter ensures we only look at other -dev tags
 tag-filter: 'v*-dev.*' 
-# --- ADDED: Define versioning rules for develop branch ---
 version-resolver:
   major:
     labels:
       - 'Major'
   minor:
     labels:
-      - 'Enhancement'
+      - 'enhancement'
   patch:
     labels:
-      - 'Bug'
-  default: Patch
+      - 'bug'
+  default: patch
 categories:
   - title: "🚀 Pre-release Enhancements"
     labels:
-      - Enhancement
+      - enhancement
   - title: "🐛 Pre-release Bug Fixes"
     labels:
-      - Bug
+      - bug
 exclude-labels:
   - skip-release
 change-template: "- $TITLE (#$NUMBER)"
