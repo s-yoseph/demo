@@ -1,16 +1,32 @@
 name-template: 'v$RESOLVED_VERSION-dev'
-tag-template: 'v$RESOLVED_VERSION-dev'
-prerelease: true
+# --- THIS IS THE FIX ---
+# Add .$COMMIT_SHA to make every dev tag unique
+tag-template: 'v$RESOLVED_VERSION-dev.$COMMIT_SHA'
+
+# This filter ensures we only look at other -dev tags
+tag-filter: 'v*-dev.*' 
 version-resolver:
   major:
-    labels: ['Major']
+    labels:
+      - 'Major'
   minor:
-    labels: ['Enhancement', 'Feature', 'Dev Task']
+    labels:
+      - 'Enhancement'
   patch:
-    labels: ['Bug', 'Hot Fix', 'Task']
+    labels:
+      - 'Bug'
   default: patch
+categories:
+  - title: "🚀 Pre-release Enhancements"
+    labels:
+      - Enhancement
+  - title: "🐛 Pre-release Bug Fixes"
+    labels:
+      - Bug
 exclude-labels:
-  - 'Skip-Changelog'
+  - skip-release
+change-template: "- $TITLE (#$NUMBER)"
+no-changes-template: "- No changes"
 template: |
   ## 🚀 Pre-release (develop)
   $CHANGES
