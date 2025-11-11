@@ -1,16 +1,30 @@
 name-template: 'v$RESOLVED_VERSION-dev'
-tag-template: 'v$RESOLVED_VERSION-dev'
-prerelease: true
+tag-template: 'v$RESOLVED_VERSION-dev.$COMMIT_SHA'
+# --- ADDED: Filter tags so develop only considers pre-release tags for its version base ---
+tag-filter: 'v*-dev.*' 
+# --- ADDED: Define versioning rules for develop branch ---
 version-resolver:
   major:
-    labels: ['Major']
+    labels:
+      - 'Major'
   minor:
-    labels: ['Enhancement', 'Feature', 'Dev Task']
+    labels:
+      - 'enhancement'
   patch:
-    labels: ['Bug', 'Hot Fix', 'Task']
+    labels:
+      - 'bug'
   default: patch
+categories:
+  - title: "🚀 Pre-release Enhancements"
+    labels:
+      - enhancement
+  - title: "🐛 Pre-release Bug Fixes"
+    labels:
+      - bug
 exclude-labels:
-  - 'Skip-Changelog'
+  - skip-release
+change-template: "- $TITLE (#$NUMBER)"
+no-changes-template: "- No changes"
 template: |
   ## 🚀 Pre-release (develop)
   $CHANGES
