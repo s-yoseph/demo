@@ -9,18 +9,18 @@ version-resolver:
       - 'Major'
   minor:
     labels:
-      - 'enhancement'
+      - 'Enhancement'
   patch:
     labels:
-      - 'bug'
-  default: patch
+      - 'Bug'
+  default: Patch
 categories:
   - title: "🚀 Pre-release Enhancements"
     labels:
-      - enhancement
+      - Enhancement
   - title: "🐛 Pre-release Bug Fixes"
     labels:
-      - bug
+      - Bug
 exclude-labels:
   - skip-release
 change-template: "- $TITLE (#$NUMBER)"
