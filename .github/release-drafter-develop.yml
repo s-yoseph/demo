@@ -1,10 +1,22 @@
-name-template: 'v$RESOLVED_VERSION-dev'
-# --- THIS IS THE FIX ---
-# Add .$COMMIT_SHA to make every dev tag unique
-tag-template: 'v$RESOLVED_VERSION-dev.$COMMIT_SHA'
+name: Release Drafter (Develop)
 
-# This filter ensures we only look at other -dev tags
-tag-filter: 'v*-dev.*' 
+# When a pull request is merged into the 'develop' branch
+# This configuration file is used by the main release-drafter.yml workflow
+# when it detects the target branch is 'develop'.
+
+# 1. Use a unique tag prefix (dev-v) to ensure version separation.
+# 2. Add the commit SHA to guarantee every tag is unique.
+tag-template: 'dev-v$RESOLVED_VERSION.$COMMIT_SHA'
+
+# Only look at tags that start with 'dev-v'. This completely ignores all stable vX.Y.Z tags.
+tag-filter: 'dev-v*.*'
+
+# Always mark releases on 'develop' as pre-release.
+prerelease: true
+
+# Version increments based on labels
+default-branch: develop
+default-label: 'patch'
 version-resolver:
   major:
     labels:
@@ -15,18 +27,24 @@ version-resolver:
   patch:
     labels:
       - 'Bug'
-  default: patch
+      - 'Patch'
+      - 'documentation'
+      - 'internal'
+      - 'refactoring'
+
+# Categorize changes in the release notes
 categories:
-  - title: "🚀 Pre-release Enhancements"
+  - title: '🚀 Pre-release Enhancements'
     labels:
-      - Enhancement
-  - title: "🐛 Pre-release Bug Fixes"
+      - 'Enhancement'
+  - title: '🐛 Pre-release Bug Fixes'
     labels:
-      - Bug
-exclude-labels:
-  - skip-release
-change-template: "- $TITLE (#$NUMBER)"
-no-changes-template: "- No changes"
-template: |
-  ## 🚀 Pre-release (develop)
-  $CHANGES
+      - 'Bug'
+  - title: '📝 Documentation & Chore'
+    labels:
+      - 'documentation'
+      - 'internal'
+      - 'refactoring'
+
+# Include a link to the develop branch
+header: '🚀 Pre-release (develop)'
