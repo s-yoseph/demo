@@ -1,22 +1,18 @@
 name: Release Drafter (Develop)
 
-# When a pull request is merged into the 'develop' branch
-# This configuration file is used by the main release-drafter.yml workflow
-# when it detects the target branch is 'develop'.
+# --- CRITICAL FIX: The required 'template' field, minimal version ---
+template: "$HEADER\n\n## Changes\n$CHANGES\n\n## Contributors\n$CONTRIBUTORS"
 
-# 1. Use a unique tag prefix (dev-v) to ensure version separation.
-# 2. Add the commit SHA to guarantee every tag is unique.
+# 1. NEW TAG FORMAT: Uses 'dev-v' prefix for independent version history
 tag-template: 'dev-v$RESOLVED_VERSION.$COMMIT_SHA'
 
-# Only look at tags that start with 'dev-v'. This completely ignores all stable vX.Y.Z tags.
+# Only look at tags that start with 'dev-v'
 tag-filter: 'dev-v*.*'
 
 # Always mark releases on 'develop' as pre-release.
 prerelease: true
 
-# Version increments based on labels
-default-branch: develop
-default-label: 'patch'
+# Version resolver logic
 version-resolver:
   major:
     labels:
@@ -28,11 +24,16 @@ version-resolver:
     labels:
       - 'Bug'
       - 'Patch'
-      - 'documentation'
-      - 'internal'
-      - 'refactoring'
+      - 'Documentation'
+      - 'Internal'
+      - 'Refactoring'
+  default: patch
 
-# Categorize changes in the release notes
+# Define how individual changes are formatted
+change-template: "- $TITLE (#$NUMBER)"
+no-changes-template: "- No changes"
+
+# Keep categories for changelog structure
 categories:
   - title: '🚀 Pre-release Enhancements'
     labels:
@@ -42,9 +43,8 @@ categories:
       - 'Bug'
   - title: '📝 Documentation & Chore'
     labels:
-      - 'documentation'
-      - 'internal'
-      - 'refactoring'
+      - 'Documentation'
+      - 'Internal'
+      - 'Refactoring'
 
-# Include a link to the develop branch
 header: '🚀 Pre-release (develop)'
