@@ -17,17 +17,18 @@ permissions:
 
 jobs:
   # ----------------------------------------------------------------------
-  # 1. DRAFTING JOB
+  # 1. DRAFTING JOB (Triggers on Pull Request events only)
   # ----------------------------------------------------------------------
   draft:
+    # Only run on standard PR events, NOT when closed
     if: github.event_name == 'pull_request' && github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          # Checkout the HEAD branch of the PR for stable commit history access
+          # Checkout the head branch of the PR for stable commit history access
           ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0 # Ensure full history for accurate drafting
+          fetch-depth: 0 # Ensure full history for drafting
 
       - name: Determine Config Name
         id: config_path
@@ -42,14 +43,16 @@ jobs:
         uses: release-drafter/release-drafter@v6
         with:
           config-name: ${{ steps.config_path.outputs.config_name }}
-          target-commitish: ${{ github.event.pull_request.merge_commit_sha }}
+          # NOTE: Removed 'target-commitish' as it's not needed for drafting a new PR
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ----------------------------------------------------------------------
-  # 2. PUBLISHING JOB (Includes Custom Versioning for Develop)
+  # 2. PUBLISHING JOB (Triggers only when a PR with 'Publish' label is MERGED)
+  # This job contains the fix for develop branch versioning.
   # ----------------------------------------------------------------------
   publish-on-label:
+    # Run only if the PR was merged AND it has the 'Publish' label.
     if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'Publish')
     runs-on: ubuntu-latest
     steps:
@@ -57,9 +60,9 @@ jobs:
         # Checkout the merge commit with full history for 'git describe'
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
-          fetch-depth: 0 # <--- CRITICAL: Required for git describe to see all tags
+          fetch-depth: 0 # CRITICAL: Required for git describe to see all tags
 
-      - name: Determine Config and Prerelease Status
+      - name: Determine Config, Prerelease Status, and Branch
         id: config_path
         run: |
           BASE_REF=${{ github.event.pull_request.base.ref }}
@@ -73,7 +76,7 @@ jobs:
             echo "is_develop=false" >> $GITHUB_OUTPUT
           fi
 
-      # --- NEW STEP: FORCES DEV VERSIONING ---
+      # --- NEW STEP: CALCULATE NEXT DEV VERSION (THE FIX) ---
       - name: Calculate Next DEV Version (Bypassing Global Fallback)
         if: steps.config_path.outputs.is_develop == 'true'
         id: dev_versioning
@@ -81,12 +84,11 @@ jobs:
           # Use git describe to find the last tag starting with 'dev-v'
           # If no tag is found, default to 'dev-v0.0.0'
           LAST_TAG=$(git describe --tags --match 'dev-v*' --abbrev=0 --candidates=10 2>/dev/null || echo 'dev-v0.0.0')
-          
+
           # Extract the version number (e.g., '0.0.0' from 'dev-v0.0.0')
           VERSION_STRING=$(echo $LAST_TAG | sed 's/dev-v//')
-          
+
           # Calculate next patch version (e.g., 0.0.0 -> 0.0.1)
-          # We use awk to ensure correct mathematical increment
           NEXT_VERSION=$(echo $VERSION_STRING | awk -F. '{print $1"."$2"."$3+1}')
 
           echo "Last unique dev tag found: $LAST_TAG"
@@ -98,11 +100,11 @@ jobs:
         uses: release-drafter/release-drafter@v6
         with:
           config-name: ${{ steps.config_path.outputs.config_name }}
-          # CRITICAL CHANGE: Pass the custom calculated version if on develop
+          # CRITICAL: Pass the custom calculated version if on develop
           next-version: ${{ steps.config_path.outputs.is_develop == 'true' && steps.dev_versioning.outputs.next_dev_version || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
+
       - name: Publish Release using Draft ID
         if: steps.create_draft.outputs.id
         run: |
