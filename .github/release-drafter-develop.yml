@@ -1,21 +1,12 @@
 name: Release Drafter (Develop)
 
-# --- FIX: The "template" field is REQUIRED by Release Drafter v6 ---
-template: |
-  $HEADER
-  
-  ## Changes
-  $CHANGES
-  
-  ## Contributors
-  $CONTRIBUTORS
-# -----------------------------------------------------------------
+# --- CRITICAL FIX: The required 'template' field, minimal version ---
+template: "$HEADER\n\n## Changes\n$CHANGES\n\n## Contributors\n$CONTRIBUTORS"
 
-# 1. NEW TAG FORMAT: Uses 'dev-v' prefix to ensure total separation from 'vX.Y.Z' stable tags.
-# 2. $COMMIT_SHA: Ensures every pre-release tag is unique.
+# 1. NEW TAG FORMAT: Uses 'dev-v' prefix for independent version history
 tag-template: 'dev-v$RESOLVED_VERSION.$COMMIT_SHA'
 
-# Only look at tags that start with 'dev-v'.
+# Only look at tags that start with 'dev-v'
 tag-filter: 'dev-v*.*'
 
 # Always mark releases on 'develop' as pre-release.
