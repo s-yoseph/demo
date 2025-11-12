@@ -43,21 +43,17 @@ jobs:
         uses: release-drafter/release-drafter@v6
         with:
           config-name: ${{ steps.config_path.outputs.config_name }}
-          # NOTE: Removed 'target-commitish' as it's not needed for drafting a new PR
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ----------------------------------------------------------------------
-  # 2. PUBLISHING JOB (Triggers only when a PR with 'Publish' label is MERGED)
-  # This job contains the fix for develop branch versioning.
+  # 2. PUBLISHING JOB (Fixes versioning by forcing the TAG name)
   # ----------------------------------------------------------------------
   publish-on-label:
-    # Run only if the PR was merged AND it has the 'Publish' label.
     if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'Publish')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        # Checkout the merge commit with full history for 'git describe'
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0 # CRITICAL: Required for git describe to see all tags
@@ -66,42 +62,46 @@ jobs:
         id: config_path
         run: |
           BASE_REF=${{ github.event.pull_request.base.ref }}
+          MERGE_SHA=${{ github.event.pull_request.merge_commit_sha }}
+          
           if [ "$BASE_REF" == "develop" ]; then
             echo "config_name=release-drafter-develop.yml" >> $GITHUB_OUTPUT
             echo "prerelease_status=true" >> $GITHUB_OUTPUT
             echo "is_develop=true" >> $GITHUB_OUTPUT
+            # Store the merge SHA for the tag calculation later
+            echo "merge_sha=$MERGE_SHA" >> $GITHUB_OUTPUT 
           else
             echo "config_name=release-drafter-main.yml" >> $GITHUB_OUTPUT
             echo "prerelease_status=false" >> $GITHUB_OUTPUT
             echo "is_develop=false" >> $GITHUB_OUTPUT
           fi
 
-      # --- NEW STEP: CALCULATE NEXT DEV VERSION (THE FIX) ---
-      - name: Calculate Next DEV Version (Bypassing Global Fallback)
+      # --- NEW STEP: CALCULATE NEXT DEV TAG STRING (THE FINAL FIX) ---
+      - name: Calculate Next DEV Tag String
         if: steps.config_path.outputs.is_develop == 'true'
-        id: dev_versioning
+        id: dev_tag_string
         run: |
-          # Use git describe to find the last tag starting with 'dev-v'
-          # If no tag is found, default to 'dev-v0.0.0'
+          # 1. Find last tag matching 'dev-v*'
           LAST_TAG=$(git describe --tags --match 'dev-v*' --abbrev=0 --candidates=10 2>/dev/null || echo 'dev-v0.0.0')
 
-          # Extract the version number (e.g., '0.0.0' from 'dev-v0.0.0')
+          # 2. Extract version (e.g., '0.0.0') and calculate next patch (e.g., '0.0.1')
           VERSION_STRING=$(echo $LAST_TAG | sed 's/dev-v//')
-
-          # Calculate next patch version (e.g., 0.0.0 -> 0.0.1)
           NEXT_VERSION=$(echo $VERSION_STRING | awk -F. '{print $1"."$2"."$3+1}')
 
-          echo "Last unique dev tag found: $LAST_TAG"
-          echo "Calculated next independent version: $NEXT_VERSION"
-          echo "next_dev_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
+          # 3. Assemble the full, forced tag (e.g., dev-v0.0.1.fbf828b)
+          FULL_TAG="dev-v${NEXT_VERSION}.${{ steps.config_path.outputs.merge_sha }}"
+          
+          echo "Calculated next independent tag: $FULL_TAG"
+          echo "forced_tag=$FULL_TAG" >> $GITHUB_OUTPUT
 
-      - name: Create/Update Final Draft (using merge commit)
+      - name: Create/Update Final Draft (Forcing TAG Name)
         id: create_draft
         uses: release-drafter/release-drafter@v6
         with:
           config-name: ${{ steps.config_path.outputs.config_name }}
-          # CRITICAL: Pass the custom calculated version if on develop
-          next-version: ${{ steps.config_path.outputs.is_develop == 'true' && steps.dev_versioning.outputs.next_dev_version || '' }}
+          # CRITICAL: Pass the calculated TAG to the 'tag' input to force the name
+          tag: ${{ steps.config_path.outputs.is_develop == 'true' && steps.dev_tag_string.outputs.forced_tag || '' }}
+          # NOTE: next-version input is no longer needed since 'tag' is set
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
