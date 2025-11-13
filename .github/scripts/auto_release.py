@@ -1,0 +1,109 @@
+import json
+import os
+import subprocess
+from pathlib import Path
+import semver
+
+def run(cmd):
+    return subprocess.check_output(cmd, shell=True, text=True).strip()
+
+def get_labels(event_path):
+    with open(event_path) as f:
+        event = json.load(f)
+    return [lbl["name"] for lbl in event["pull_request"]["labels"]], event
+
+def get_branch():
+    ref = os.getenv("GITHUB_REF", "")
+    return ref.split("/")[-1]
+
+def get_latest_tag(prefix):
+    try:
+        tags = run(f"git tag --list '{prefix}*' | sort -V").splitlines()
+        return tags[-1] if tags else f"{prefix}0.0.0"
+    except subprocess.CalledProcessError:
+        return f"{prefix}0.0.0"
+
+def get_commits_since_tag(tag):
+    try:
+        return run(f"git log {tag}..HEAD --pretty=format:'%s|%an'").splitlines()
+    except subprocess.CalledProcessError:
+        return []
+
+def categorize_changes(commits):
+    sections = {
+        "🚀 Features": [],
+        "🐛 Fixes": [],
+        "💥 Breaking Changes": [],
+        "🧰 Other": []
+    }
+    for c in commits:
+        message, author = (c.split("|") + [""])[:2]
+        msg_lower = message.lower()
+        line = f"- {message} (_{author}_)"
+        if "feature" in msg_lower or "enhanc" in msg_lower:
+            sections["🚀 Features"].append(line)
+        elif "bug" in msg_lower or "fix" in msg_lower:
+            sections["🐛 Fixes"].append(line)
+        elif "breaking" in msg_lower:
+            sections["💥 Breaking Changes"].append(line)
+        else:
+            sections["🧰 Other"].append(line)
+    return sections
+
+def build_changelog(sections, current_tag):
+    changelog = [f"## Changes since {current_tag}\n"]
+    for section, items in sections.items():
+        if items:
+            changelog.append(f"### {section}\n" + "\n".join(items) + "\n")
+    return "\n".join(changelog)
+
+def main():
+    event_path = os.getenv("GITHUB_EVENT_PATH")
+    labels, event = get_labels(event_path)
+    branch = get_branch()
+
+    print(f"🔖 Labels: {labels}")
+    print(f"🌿 Branch: {branch}")
+
+    # Determine bump type
+    if "Breaking change" in labels:
+        bump = "major"
+    elif "Enhancment" in labels or "Feature" in labels:
+        bump = "minor"
+    else:
+        bump = "patch"
+
+    publish = "Publish" in labels
+    prefix = "dev-" if branch == "develop" else ""
+
+    current_tag = get_latest_tag(prefix)
+    current_version = current_tag.replace(prefix, "")
+    next_version = semver.VersionInfo.parse(current_version).bump_part(bump)
+    next_tag = f"{prefix}{next_version}"
+
+    print(f"➡️ Current tag: {current_tag}")
+    print(f"➡️ Next tag: {next_tag}")
+
+    # Generate changelog
+    commits = get_commits_since_tag(current_tag)
+    sections = categorize_changes(commits)
+    changelog = build_changelog(sections, current_tag)
+    print("\n📝 Generated changelog:\n")
+    print(changelog)
+
+    # Create and push tag
+    run(f"git tag {next_tag}")
+    run(f"git push origin {next_tag}")
+    print(f"✅ Created and pushed tag {next_tag}")
+
+    # Optionally publish release
+    if publish:
+        changelog_file = Path("CHANGELOG.md")
+        changelog_file.write_text(changelog, encoding="utf-8")
+        run(f'gh release create {next_tag} --notes-file CHANGELOG.md')
+        print(f"🚀 Published release for {next_tag}")
+    else:
+        print("📦 Skipping release (no Publish label)")
+
+if __name__ == "__main__":
+    main()
