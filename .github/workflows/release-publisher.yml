@@ -1,79 +1,29 @@
-name: Auto Release
+name: Python Auto Release
 
 on:
   pull_request:
     types: [closed]
+
+permissions:
+  contents: write
 
 jobs:
   release:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
-      # Checkout code
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Determine version bump and check Publish label
-      - name: Determine version bump and check Publish
-        id: bump
-        run: |
-          LABELS=$(jq -r '.pull_request.labels[].name' <<< "${{ toJSON(github.event) }}")
-          echo "Labels: $LABELS"
-
-          # Decide version bump
-          if [[ "$LABELS" == *"Breaking change"* ]]; then
-            echo "version_bump=major" >> $GITHUB_OUTPUT
-          elif [[ "$LABELS" == *"Enhancment"* ]] || [[ "$LABELS" == *"Feature"* ]]; then
-            echo "version_bump=minor" >> $GITHUB_OUTPUT
-          elif [[ "$LABELS" == *"Bug"* ]]; then
-            echo "version_bump=patch" >> $GITHUB_OUTPUT
-          else
-            echo "version_bump=patch" >> $GITHUB_OUTPUT
-
-          # Check if Publish label exists
-          if [[ "$LABELS" == *"Publish"* ]]; then
-            echo "publish=true" >> $GITHUB_OUTPUT
-          else
-            echo "publish=false" >> $GITHUB_OUTPUT
-
-      # Get latest tag for the branch
-      - name: Get current tag
-        id: tag
-        run: |
-          BRANCH=$(echo "${GITHUB_REF##*/}")
-          if [[ "$BRANCH" == "develop" ]]; then
-            PREFIX="dev-"
-          else
-            PREFIX=""
-          fi
-
-          CURRENT=$(git tag --list "${PREFIX}*" | sort -V | tail -n1 || echo "0.0.0")
-          echo "current=$CURRENT" >> $GITHUB_OUTPUT
-          echo "prefix=$PREFIX" >> $GITHUB_OUTPUT
-
-      # Calculate next version
-      - name: Calculate next version
-        id: next
-        run: |
-          CURRENT=${{ steps.tag.outputs.current }}
-          PREFIX=${{ steps.tag.outputs.prefix }}
-          BUMP=${{ steps.bump.outputs.version_bump }}
-          NEXT_VERSION=$(npx semver ${CURRENT#${PREFIX}} -i $BUMP)
-          NEXT="$PREFIX$NEXT_VERSION"
-          echo "next=$NEXT" >> $GITHUB_OUTPUT
-
-      # Create and push tag
-      - name: Create tag
-        run: |
-          git tag ${{ steps.next.outputs.next }}
-          git push origin ${{ steps.next.outputs.next }}
-
-      # Publish release only if Publish label exists
-      - name: Publish GitHub release if Publish label exists
-        if: ${{ steps.bump.outputs.publish == 'true' }}
-        uses: softprops/action-gh-release@v1
+      - uses: actions/setup-python@v5
         with:
-          tag_name: ${{ steps.next.outputs.next }}
+          python-version: '3.11'
+
+      - run: pip install semver
+
+      - name: Run release script
+        run: python .github/scripts/auto_release.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
