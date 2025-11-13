@@ -1,121 +1,79 @@
-name: Release Drafting and Publishing (PR/Push)
+name: Auto Release
 
 on:
-  push:
-    branches:
-      - develop
-      - main
   pull_request:
-    types: [opened, synchronize, reopened, edited, closed]
-    branches:
-      - develop
-      - main
-
-permissions:
-  contents: write
-  pull-requests: write
+    types: [closed]
 
 jobs:
-  # ----------------------------------------------------------------------
-  # 1. DRAFTING JOB (Triggers on Pull Request events only)
-  # ----------------------------------------------------------------------
-  draft:
-    # Only run on standard PR events, NOT when closed
-    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+  release:
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
+      # Checkout code
       - uses: actions/checkout@v4
         with:
-          # Checkout the head branch of the PR for stable commit history access
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0 # Ensure full history for drafting
+          fetch-depth: 0
 
-      - name: Determine Config Name
-        id: config_path
+      # Determine version bump and check Publish label
+      - name: Determine version bump and check Publish
+        id: bump
         run: |
-          if [ "${{ github.base_ref }}" == "develop" ]; then
-            echo "config_name=release-drafter-develop.yml" >> $GITHUB_OUTPUT
+          LABELS=$(jq -r '.pull_request.labels[].name' <<< "${{ toJSON(github.event) }}")
+          echo "Labels: $LABELS"
+
+          # Decide version bump
+          if [[ "$LABELS" == *"Breaking change"* ]]; then
+            echo "version_bump=major" >> $GITHUB_OUTPUT
+          elif [[ "$LABELS" == *"Enhancment"* ]] || [[ "$LABELS" == *"Feature"* ]]; then
+            echo "version_bump=minor" >> $GITHUB_OUTPUT
+          elif [[ "$LABELS" == *"Bug"* ]]; then
+            echo "version_bump=patch" >> $GITHUB_OUTPUT
           else
-            echo "config_name=release-drafter-main.yml" >> $GITHUB_OUTPUT
+            echo "version_bump=patch" >> $GITHUB_OUTPUT
+
+          # Check if Publish label exists
+          if [[ "$LABELS" == *"Publish"* ]]; then
+            echo "publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "publish=false" >> $GITHUB_OUTPUT
+
+      # Get latest tag for the branch
+      - name: Get current tag
+        id: tag
+        run: |
+          BRANCH=$(echo "${GITHUB_REF##*/}")
+          if [[ "$BRANCH" == "develop" ]]; then
+            PREFIX="dev-"
+          else
+            PREFIX=""
           fi
 
-      - name: Draft Release
-        uses: release-drafter/release-drafter@v6
-        with:
-          config-name: ${{ steps.config_path.outputs.config_name }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURRENT=$(git tag --list "${PREFIX}*" | sort -V | tail -n1 || echo "0.0.0")
+          echo "current=$CURRENT" >> $GITHUB_OUTPUT
+          echo "prefix=$PREFIX" >> $GITHUB_OUTPUT
 
-  # ----------------------------------------------------------------------
-  # 2. PUBLISHING JOB (Fixes versioning by forcing the TAG name)
-  # ----------------------------------------------------------------------
-  publish-on-label:
-    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'Publish')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
-          fetch-depth: 0 # CRITICAL: Required for git describe to see all tags
-
-      - name: Determine Config, Prerelease Status, and Branch
-        id: config_path
+      # Calculate next version
+      - name: Calculate next version
+        id: next
         run: |
-          BASE_REF=${{ github.event.pull_request.base.ref }}
-          MERGE_SHA=${{ github.event.pull_request.merge_commit_sha }}
-          
-          if [ "$BASE_REF" == "develop" ]; then
-            echo "config_name=release-drafter-develop.yml" >> $GITHUB_OUTPUT
-            echo "prerelease_status=true" >> $GITHUB_OUTPUT
-            echo "is_develop=true" >> $GITHUB_OUTPUT
-            # Store the merge SHA for the tag calculation later
-            echo "merge_sha=$MERGE_SHA" >> $GITHUB_OUTPUT 
-          else
-            echo "config_name=release-drafter-main.yml" >> $GITHUB_OUTPUT
-            echo "prerelease_status=false" >> $GITHUB_OUTPUT
-            echo "is_develop=false" >> $GITHUB_OUTPUT
-          fi
+          CURRENT=${{ steps.tag.outputs.current }}
+          PREFIX=${{ steps.tag.outputs.prefix }}
+          BUMP=${{ steps.bump.outputs.version_bump }}
+          NEXT_VERSION=$(npx semver ${CURRENT#${PREFIX}} -i $BUMP)
+          NEXT="$PREFIX$NEXT_VERSION"
+          echo "next=$NEXT" >> $GITHUB_OUTPUT
 
-      # --- NEW STEP: CALCULATE NEXT DEV TAG STRING (THE FINAL FIX) ---
-      - name: Calculate Next DEV Tag String
-        if: steps.config_path.outputs.is_develop == 'true'
-        id: dev_tag_string
+      # Create and push tag
+      - name: Create tag
         run: |
-          # 1. Find last tag matching 'dev-v*'
-          LAST_TAG=$(git describe --tags --match 'dev-v*' --abbrev=0 --candidates=10 2>/dev/null || echo 'dev-v0.0.0')
+          git tag ${{ steps.next.outputs.next }}
+          git push origin ${{ steps.next.outputs.next }}
 
-          # 2. Extract version (e.g., '0.0.0') and calculate next patch (e.g., '0.0.1')
-          VERSION_STRING=$(echo $LAST_TAG | sed 's/dev-v//')
-          NEXT_VERSION=$(echo $VERSION_STRING | awk -F. '{print $1"."$2"."$3+1}')
-
-          # 3. Assemble the full, forced tag (e.g., dev-v0.0.1.fbf828b)
-          FULL_TAG="dev-v${NEXT_VERSION}.${{ steps.config_path.outputs.merge_sha }}"
-          
-          echo "Calculated next independent tag: $FULL_TAG"
-          echo "forced_tag=$FULL_TAG" >> $GITHUB_OUTPUT
-
-      - name: Create/Update Final Draft (Forcing TAG Name)
-        id: create_draft
-        uses: release-drafter/release-drafter@v6
+      # Publish release only if Publish label exists
+      - name: Publish GitHub release if Publish label exists
+        if: ${{ steps.bump.outputs.publish == 'true' }}
+        uses: softprops/action-gh-release@v1
         with:
-          config-name: ${{ steps.config_path.outputs.config_name }}
-          # CRITICAL: Pass the calculated TAG to the 'tag' input to force the name
-          tag: ${{ steps.config_path.outputs.is_develop == 'true' && steps.dev_tag_string.outputs.forced_tag || '' }}
-          # NOTE: next-version input is no longer needed since 'tag' is set
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish Release using Draft ID
-        if: steps.create_draft.outputs.id
-        run: |
-          echo "Publishing release ${{ steps.create_draft.outputs.name }} (ID: ${{ steps.create_draft.outputs.id }})"
-          # Use gh CLI to update the draft, setting draft=false and setting prerelease status
-          gh api \
-            --method PATCH \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            /repos/${{ github.repository }}/releases/${{ steps.create_draft.outputs.id }} \
-            -f draft=false \
-            -f prerelease=${{ steps.config_path.outputs.prerelease_status }}
+          tag_name: ${{ steps.next.outputs.next }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
