@@ -5,6 +5,7 @@ from pathlib import Path
 import semver
 
 def run(cmd):
+    print(f"🧩 Running: {cmd}")
     return subprocess.check_output(cmd, shell=True, text=True).strip()
 
 def get_labels(event_path):
@@ -50,12 +51,24 @@ def categorize_changes(commits):
             sections["🧰 Other"].append(line)
     return sections
 
-def build_changelog(sections, current_tag):
-    changelog = [f"## Changes since {current_tag}\n"]
+def build_changelog(sections, current_tag, next_tag):
+    changelog = [f"## {next_tag} — Changes since {current_tag}\n"]
     for section, items in sections.items():
         if items:
             changelog.append(f"### {section}\n" + "\n".join(items) + "\n")
     return "\n".join(changelog)
+
+def update_changelog_repo(changelog, changelog_path="CHANGELOG.md"):
+    changelog_file = Path(changelog_path)
+    previous_content = changelog_file.read_text(encoding="utf-8") if changelog_file.exists() else ""
+    new_content = f"{changelog}\n\n{previous_content}"
+    changelog_file.write_text(new_content, encoding="utf-8")
+
+    run("git config user.name 'github-actions[bot]'")
+    run("git config user.email 'github-actions[bot]@users.noreply.github.com'")
+    run("git add CHANGELOG.md")
+    run('git commit -m "chore: update changelog [skip ci]" || echo "No changes to commit"')
+    run("git push origin HEAD")
 
 def main():
     event_path = os.getenv("GITHUB_EVENT_PATH")
@@ -87,9 +100,12 @@ def main():
     # Generate changelog
     commits = get_commits_since_tag(current_tag)
     sections = categorize_changes(commits)
-    changelog = build_changelog(sections, current_tag)
+    changelog = build_changelog(sections, current_tag, next_tag)
     print("\n📝 Generated changelog:\n")
     print(changelog)
+
+    # Update and commit to repo
+    update_changelog_repo(changelog)
 
     # Create and push tag
     run(f"git tag {next_tag}")
@@ -98,9 +114,8 @@ def main():
 
     # Optionally publish release
     if publish:
-        changelog_file = Path("CHANGELOG.md")
-        changelog_file.write_text(changelog, encoding="utf-8")
-        run(f'gh release create {next_tag} --notes-file CHANGELOG.md')
+        Path("RELEASE_NOTES.md").write_text(changelog, encoding="utf-8")
+        run(f'gh release create {next_tag} --notes-file RELEASE_NOTES.md')
         print(f"🚀 Published release for {next_tag}")
     else:
         print("📦 Skipping release (no Publish label)")
