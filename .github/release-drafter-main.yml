@@ -1,10 +1,30 @@
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
-
-# --- FIX: Use tag-ignore to exclude all pre-releases. ---
-# This ensures main only sees stable vX.Y.Z tags.
-tag-ignore: 'v*-dev.*'
-
+tag-prefix: 'v'
+prerelease: false
+include-pre-releases: false
+template: |
+  # What's Changed
+  $CHANGES
+  **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
+categories:
+  - title: 'Breaking Changes'
+    labels:
+      - 'Major'
+  - title: 'Enhancements'
+    labels:
+      - 'Enhancement'
+      - 'Dev Task'
+      - 'Feature'
+      - 'Dev Process Optimization'
+  - title: 'Bug Fixes'
+    labels:
+      - 'Bug'
+      - 'Hot Fix'
+  - title: 'Tasks'
+    labels:
+      - 'Task'
+change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
 version-resolver:
   major:
     labels:
@@ -12,21 +32,15 @@ version-resolver:
   minor:
     labels:
       - 'Enhancement'
+      - 'Dev Task'
+      - 'Feature'
+      - 'Dev Process Optimization'
   patch:
     labels:
       - 'Bug'
+      - 'Hot Fix'
+      - 'Task'
+      - 'Security'
   default: patch
-categories:
-  - title: "🚀 Enhancements"
-    labels:
-      - Enhancement
-  - title: "🐛 Bug Fixes"
-    labels:
-      - Bug
 exclude-labels:
-  - skip-release
-change-template: "- $TITLE (#$NUMBER)"
-no-changes-template: "- No changes"
-template: |
-  ## Changes
-  $CHANGES
+  - 'Skip-Changelog'
