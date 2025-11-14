@@ -1,35 +1,88 @@
-name: Auto Release on Merge
+name: Release Drafter and Publisher
 
 on:
   pull_request:
-    types: [closed]
+    types: [opened, reopened, synchronize, closed]
+    branches:
+      - develop
+      - main
 
 permissions:
   contents: write
-  pull-requests: read
+  pull-requests: write
+
+concurrency:
+  group: release-drafter-${{ github.event.pull_request.base.ref }}
+  cancel-in-progress: true
 
 jobs:
-  auto_release:
-    if: github.event.pull_request.merged == true
+  update_release_draft:
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - name: Set configuration based on branch
+        id: config
+        run: |
+          BASE_REF="${{ github.event.pull_request.base.ref }}"
+          if [ "$BASE_REF" = "develop" ]; then
+            echo "config_name=release-drafter-develop.yml" >> $GITHUB_OUTPUT
+            echo "commitish=develop" >> $GITHUB_OUTPUT
+          else
+            echo "config_name=release-drafter-main.yml" >> $GITHUB_OUTPUT
+            echo "commitish=main" >> $GITHUB_OUTPUT
+          fi
+      - uses: release-drafter/release-drafter@v6
         with:
-          fetch-depth: 0   # REQUIRED to get tags
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.11
-
-      - name: Install dependencies
-        run: pip install semver
-
-      - name: Run Auto Release Script
+          config-name: ${{ steps.config.outputs.config_name }}
+          commitish: ${{ steps.config.outputs.commitish }}
         env:
-          BRANCH: ${{ github.event.pull_request.base.ref }}
-          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python .github/scripts/auto_release.py
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish_draft:
+    if: >
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true &&
+      contains(github.event.pull_request.labels.*.name, 'Publish')
+    needs: update_release_draft
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set prerelease flag
+        id: set-flag
+        run: |
+          BASE_REF="${{ github.event.pull_request.base.ref }}"
+          if [ "$BASE_REF" = "develop" ]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Publish latest draft release
+        uses: actions/github-script@v7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          script: |
+            const isPrerelease = '${{ steps.set-flag.outputs.is_prerelease }}' === 'true';
+            const releases = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+            const draft = releases.data.find(r => r.draft && r.prerelease === isPrerelease);
+            if (!draft) {
+              core.setFailed(`No draft release found for prerelease: ${isPrerelease}`);
+              return;
+            }
+            try {
+              await github.rest.repos.updateRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: draft.id,
+                draft: false
+              });
+              console.log(`✅ Draft release "${draft.tag_name}" published successfully!`);
+            } catch (error) {
+              core.setFailed(`Failed to publish release: ${error.message}`);
+              throw error;
+            }
