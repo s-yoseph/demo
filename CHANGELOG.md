@@ -1,3 +1,11 @@
+dev-0.1.4
+Changes
+
+🧰 Other
+Merge pull request #51 from s-yoseph/40 (#efae2b5)
+40 (#0f4f32e)
+Update auto_release.py (#5d82a76)
+
 dev-0.1.3
 Changes
 🧰 Other
