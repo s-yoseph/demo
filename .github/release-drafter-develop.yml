@@ -1,18 +1,30 @@
-name: Release Drafter (Develop)
-
-# --- CRITICAL FIX: The required 'template' field, minimal version ---
-template: "$HEADER\n\n## Changes\n$CHANGES\n\n## Contributors\n$CONTRIBUTORS"
-
-# 1. NEW TAG FORMAT: Uses 'dev-v' prefix for independent version history
-tag-template: 'dev-v$RESOLVED_VERSION.$COMMIT_SHA'
-
-# Only look at tags that start with 'dev-v'
-tag-filter: 'dev-v*.*'
-
-# Always mark releases on 'develop' as pre-release.
+name-template: 'Develop v$RESOLVED_VERSION'
+tag-template: 'dev-v$RESOLVED_VERSION'
+tag-prefix: 'dev-v'
 prerelease: true
-
-# Version resolver logic
+include-pre-releases: true
+template: |
+  # What's Changed
+  $CHANGES
+  **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...dev-v$RESOLVED_VERSION
+categories:
+  - title: 'Breaking Changes'
+    labels:
+      - 'Major'
+  - title: 'Enhancements'
+    labels:
+      - 'Enhancement'
+      - 'Dev Task'
+      - 'Feature'
+      - 'Dev Process Optimization'
+  - title: 'Bug Fixes'
+    labels:
+      - 'Bug'
+      - 'Hot Fix'
+  - title: 'Tasks'
+    labels:
+      - 'Task'
+change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
 version-resolver:
   major:
     labels:
@@ -20,31 +32,15 @@ version-resolver:
   minor:
     labels:
       - 'Enhancement'
+      - 'Dev Task'
+      - 'Feature'
+      - 'Dev Process Optimization'
   patch:
     labels:
       - 'Bug'
-      - 'Patch'
-      - 'Documentation'
-      - 'Internal'
-      - 'Refactoring'
+      - 'Hot Fix'
+      - 'Task'
+      - 'Security'
   default: patch
-
-# Define how individual changes are formatted
-change-template: "- $TITLE (#$NUMBER)"
-no-changes-template: "- No changes"
-
-# Keep categories for changelog structure
-categories:
-  - title: '🚀 Pre-release Enhancements'
-    labels:
-      - 'Enhancement'
-  - title: '🐛 Pre-release Bug Fixes'
-    labels:
-      - 'Bug'
-  - title: '📝 Documentation & Chore'
-    labels:
-      - 'Documentation'
-      - 'Internal'
-      - 'Refactoring'
-
-header: '🚀 Pre-release (develop)'
+exclude-labels:
+  - 'Skip-Changelog'
