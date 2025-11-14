@@ -2,7 +2,6 @@
 import os
 import subprocess
 import semver
-import json
 import re
 from pathlib import Path
 
@@ -11,8 +10,7 @@ from pathlib import Path
 # ----------------------------
 def run(cmd):
     print(f"🧩 Running: {cmd}")
-    result = subprocess.check_output(cmd, shell=True, text=True).strip()
-    return result
+    return subprocess.check_output(cmd, shell=True, text=True).strip()
 
 # ----------------------------
 # Determine bump type from labels
@@ -52,11 +50,12 @@ def bump_version(current, bump):
     return v
 
 # ----------------------------
-# Get commits since tag
+# Get merged PR commits since tag
 # ----------------------------
 def get_commits_since_tag(tag):
     try:
-        return run(f"git log {tag}..HEAD --pretty=format:'%s|%h'").splitlines()
+        # only PR merge commits
+        return run(f"git log {tag}..HEAD --merges --pretty=format:'%s|%h'").splitlines()
     except subprocess.CalledProcessError:
         return []
 
@@ -69,14 +68,14 @@ def categorize_commits(commits):
         "🐛 Bug Fixes": [],
         "🧰 Other": []
     }
-    pr_merge_re = re.compile(r"Merge pull request #(\d+) from .*? (.+)")
+
+    pr_merge_re = re.compile(r"Merge pull request #(\d+) from .*? (.+)", re.IGNORECASE)
 
     for c in commits:
         parts = c.split("|")
         msg = parts[0].strip()
         commit_hash = parts[1].strip() if len(parts) > 1 else ""
 
-        # Check if merge PR
         m = pr_merge_re.match(msg)
         if m:
             pr_number = m.group(1)
@@ -125,11 +124,9 @@ def update_changelog_repo(changelog, changelog_path="CHANGELOG.md"):
 # MAIN LOGIC
 # ----------------------------
 def main():
-    # Labels and branch from environment
     labels_raw = os.getenv("PR_LABELS", "")
     branch = os.getenv("BRANCH", "")
     labels = [l.strip() for l in labels_raw.split(",") if l.strip()]
-
     print(f"🔖 Labels: {labels}")
     print(f"🌿 Branch: {branch}")
 
@@ -157,7 +154,7 @@ def main():
 
         if publish:
             Path("RELEASE_NOTES.md").write_text(changelog, encoding="utf-8")
-            run(f'gh release create {new_tag} --notes-file RELEASE_NOTES.md')
+            run(f'gh release create {new_tag} --prerelease --notes-file RELEASE_NOTES.md')
             print(f"🚀 Published pre-release {new_tag}")
         return
 
