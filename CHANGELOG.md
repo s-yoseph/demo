@@ -1,3 +1,9 @@
+dev-0.1.6
+Changes
+
+🧰 Other
+Merge pull request #53 from s-yoseph/43 (726de41)
+
 dev-0.1.5
 Changes
 
