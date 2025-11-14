@@ -2,7 +2,13 @@ name: Auto Release on Merge
 
 on:
   pull_request:
-    types: [closed]
+    types:
+      - opened
+      - synchronize
+      - labeled
+      - unlabeled
+      - reopened
+      - closed      # when PR is merged or just closed
 
 permissions:
   contents: write
@@ -10,14 +16,17 @@ permissions:
 
 jobs:
   auto_release:
-    if: github.event.pull_request.merged == true
+    # Run ONLY when PR is merged OR when labels change
+    if: >
+      github.event.pull_request.merged == true ||
+      github.event.action == 'labeled'
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # REQUIRED so tags can be read
+          fetch-depth: 0   # REQUIRED for tags
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -25,13 +34,13 @@ jobs:
           python-version: 3.11
 
       - name: Install dependencies
-        run: |
-          pip install semver
+        run: pip install semver
 
       - name: Run Auto Release Script
         env:
           GITHUB_EVENT_PATH: ${{ github.event_path }}
           GITHUB_REF: ${{ github.ref }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python .github/scripts/auto_release.py
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          BRANCH: ${{ github.ref_name }}
+        run: python .github/scripts/auto_release.py
