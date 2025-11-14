@@ -36,36 +36,39 @@ def get_latest_tag(pattern):
         return None
 
 # ----------------------------
-# Get commits since last tag
+# Get merged PRs from GitHub
 # ----------------------------
-def get_commits_since_tag(tag):
-    if tag:
-        return run(f"git log {tag}..HEAD --merges --pretty=format:'%s|%h'").splitlines()
-    else:
-        return run("git log --merges --pretty=format:'%s|%h'").splitlines()
+def get_merged_prs(branch):
+    cmd = (
+        f"gh pr list --state merged --base {branch} --limit 1000 --json number,title,author"
+        " | jq -r '.[] | \"- \(.title) @\(.author.login) (#\(.number))\"'"
+    )
+    try:
+        lines = run(cmd).splitlines()
+        return lines
+    except subprocess.CalledProcessError:
+        return []
 
 # ----------------------------
-# Categorize commits
+# Categorize PRs
 # ----------------------------
-def categorize_commits(commits):
+def categorize_prs(prs):
     sections = {
         "🚀 Features": [],
         "🐛 Fixes": [],
         "💥 Breaking Changes": [],
         "🧰 Other": []
     }
-    for c in commits:
-        title, pr_hash = c.split("|") if "|" in c else (c, "")
-        title_lower = title.lower()
-        line = f"{title} ({pr_hash})"
-        if "feature" in title_lower or "enhanc" in title_lower:
-            sections["🚀 Features"].append(line)
-        elif "bug" in title_lower or "fix" in title_lower:
-            sections["🐛 Fixes"].append(line)
-        elif "breaking" in title_lower:
-            sections["💥 Breaking Changes"].append(line)
+    for pr in prs:
+        pr_lower = pr.lower()
+        if "feature" in pr_lower or "enhanc" in pr_lower:
+            sections["🚀 Features"].append(pr)
+        elif "bug" in pr_lower or "fix" in pr_lower:
+            sections["🐛 Fixes"].append(pr)
+        elif "breaking" in pr_lower:
+            sections["💥 Breaking Changes"].append(pr)
         else:
-            sections["🧰 Other"].append(line)
+            sections["🧰 Other"].append(pr)
     return sections
 
 # ----------------------------
@@ -110,7 +113,6 @@ def bump_version(current, bump):
 # Main function
 # ----------------------------
 def main():
-    # Get PR labels from GitHub Actions
     event_path = os.getenv("GITHUB_EVENT_PATH")
     branch = os.getenv("GITHUB_REF", "").split("/")[-1]
 
@@ -135,8 +137,8 @@ def main():
         next_version = bump_version(current_version, bump)
         new_tag = f"dev-{next_version}"
 
-        commits = get_commits_since_tag(latest)
-        sections = categorize_commits(commits)
+        prs = get_merged_prs(branch)
+        sections = categorize_prs(prs)
         changelog = build_changelog(sections, latest, new_tag)
         print(changelog)
         update_changelog_repo(changelog)
@@ -159,8 +161,8 @@ def main():
         next_version = bump_version(current_version, bump)
         new_tag = f"v{next_version}"
 
-        commits = get_commits_since_tag(latest)
-        sections = categorize_commits(commits)
+        prs = get_merged_prs(branch)
+        sections = categorize_prs(prs)
         changelog = build_changelog(sections, latest, new_tag)
         print(changelog)
         update_changelog_repo(changelog)
@@ -169,13 +171,4 @@ def main():
         run(f"git push origin {new_tag}")
 
         # Stable release
-        Path("RELEASE_NOTES.md").write_text(changelog, encoding="utf-8")
-        run(f'gh release create {new_tag} --notes-file RELEASE_NOTES.md')
-        print(f"🎉 Published stable release {new_tag}")
-        return
-
-    print("⚠️ No tagging performed — branch not supported.")
-
-
-if __name__ == "__main__":
-    main()
+        Path("RELEASE_NOTES.md_
