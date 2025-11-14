@@ -1,4 +1,4 @@
-name: Python Auto Release
+name: Auto Release on Merge
 
 on:
   pull_request:
@@ -6,24 +6,32 @@ on:
 
 permissions:
   contents: write
+  pull-requests: read
 
 jobs:
-  release:
+  auto_release:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0   # REQUIRED so tags can be read
 
-      - uses: actions/setup-python@v5
+      - name: Setup Python
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: 3.11
 
-      - run: pip install semver
+      - name: Install dependencies
+        run: |
+          pip install semver
 
-      - name: Run release script
-        run: python .github/scripts/auto_release.py
+      - name: Run Auto Release Script
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          GITHUB_REF: ${{ github.ref }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python .github/scripts/auto_release.py
